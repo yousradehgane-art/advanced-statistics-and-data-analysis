@@ -1,0 +1,211 @@
+---
+title: "Generalized Linear Models: Titanic Survival Analysis"
+author: "Advanced Statistics and Data Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+This homework uses the Titanic passenger dataset to study survival probability using a generalized linear model.
+
+The response variable is:
+
+- `Survived`: whether the passenger survived (`Yes`) or not (`No`)
+
+The explanatory variables are:
+
+- `Type`: passenger type (`child`, `female`, `male`)
+- `Class`: travel class (`1st`, `2nd`, `3rd`)
+
+The main goal is to fit a logistic regression model for the probability of survival as a function of passenger type and passenger class.
+
+The logistic regression model has the form:
+
+\[
+P(\text{Survived}) = \frac{e^\eta}{1 + e^\eta}
+\]
+
+where:
+
+\[
+\eta = \beta_0 + \beta_1X_1 + \beta_2X_2 + \beta_3X_3 + \beta_4X_4
+\]
+
+Here, the predictors represent passenger type and passenger class.
+
+# Load packages and data
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(car)
+```
+
+```{r}
+load("titanic.rda")
+head(titanic)
+glimpse(titanic)
+```
+
+# Fit the logistic regression model
+
+We fit a logistic regression model with `Survived` as the response and `Type` and `Class` as explanatory variables.
+
+```{r}
+fit <- glm(Survived ~ Type + Class, family = "binomial", data = titanic)
+summary(fit)
+```
+
+The estimated model is:
+
+\[
+P(\text{Survived}) = \frac{e^\eta}{1 + e^\eta}
+\]
+
+with:
+
+\[
+\eta = 2.392 + 0.027X_1 - 2.983X_2 - 1.028X_3 - 2.145X_4
+\]
+
+where the baseline group is children travelling in first class.
+
+The coefficient for `Typefemale` is close to zero, which means that women and children have very similar estimated survival probabilities after accounting for class. The coefficient for `Typemale` is strongly negative, indicating that men had much lower survival probability than children. The coefficients for second and third class are also negative, meaning that lower class passengers had lower survival probability than first class passengers.
+
+# Predicted survival probabilities
+
+We compute predicted survival probabilities for all combinations of passenger type and class.
+
+```{r}
+newdata <- expand.grid(
+  Type = c("child", "female", "male"),
+  Class = c("1st", "2nd", "3rd")
+)
+
+newdata$Survival_Prob <- predict(fit, newdata = newdata, type = "response")
+newdata
+```
+
+# Which passenger group had the highest probability of surviving?
+
+The highest survival probability is expected for the group with the largest linear predictor.
+
+Since the baseline group is children in first class and the female effect is essentially zero, the highest survival probability is for children and women in first class.
+
+```{r}
+newdata[order(-newdata$Survival_Prob), ]
+```
+
+# Which passenger group experienced the highest mortality?
+
+The highest mortality corresponds to the lowest survival probability.
+
+```{r}
+newdata[order(newdata$Survival_Prob), ]
+```
+
+The lowest survival probability occurs for males in third class. Therefore, males in third class experienced the highest mortality.
+
+# Do the parameter estimates support the statement that preference was given to women and children?
+
+Yes. The model supports the idea that women and children had higher survival probability than men.
+
+The coefficient for `Typemale` is strongly negative, while the coefficient for `Typefemale` is close to zero. This means that women and children had similar survival probabilities, while men had much lower survival probabilities.
+
+```{r}
+coef(fit)
+```
+
+# Was preference given more to children or more to women?
+
+The coefficient for `Typefemale` is approximately zero and not statistically significant. Therefore, the model does not show a meaningful difference between children and women.
+
+In other words, the data support the idea that women and children were treated similarly in terms of survival probability.
+
+# Odds ratios
+
+We calculate odds ratios by exponentiating the model coefficients.
+
+```{r}
+exp(coef(fit))
+```
+
+The odds ratio for `Typemale` is far below 1, meaning that men had much lower odds of survival compared with children.
+
+The odds ratios for `Class2nd` and `Class3rd` are also below 1. This indicates that, after accounting for passenger type, passengers in second and third class had lower survival odds than passengers in first class.
+
+# Did class affect survival?
+
+The British Board of Trade concluded that the policy of "women and children first" had been followed with no class discrimination. To check whether class affected survival, we test:
+
+\[
+H_0: \beta_3 = 0 \text{ and } \beta_4 = 0
+\]
+
+against:
+
+\[
+H_1: \beta_3 \neq 0 \text{ and/or } \beta_4 \neq 0
+\]
+
+This compares the full model with `Type + Class` against a reduced model with only `Type`.
+
+```{r}
+fit_1 <- glm(Survived ~ Type, family = "binomial", data = titanic)
+summary(fit_1)
+```
+
+```{r}
+anova(fit, fit_1, test = "Chisq")
+```
+
+The p-value is very small, so we reject the null hypothesis. There is strong statistical evidence that passenger class affected survival, even after controlling for passenger type.
+
+Therefore, the data do not support the statement that class did not determine survival.
+
+# Were second and third class passengers treated differently?
+
+We now test whether the treatment reserved to second class passengers was different from that reserved to third class passengers.
+
+The hypothesis is:
+
+\[
+H_0: \beta_3 - \beta_4 = 0
+\]
+
+against:
+
+\[
+H_1: \beta_3 - \beta_4 \neq 0
+\]
+
+This is equivalent to testing whether the coefficients for `Class2nd` and `Class3rd` are equal.
+
+```{r}
+.Hypothesis <- matrix(c(0, 0, 0, 1, -1), 1, 5, byrow = TRUE)
+.RHS <- c(0)
+
+linearHypothesis(fit, .Hypothesis, rhs = .RHS, test = "Chisq")
+```
+
+The p-value is very small, so we reject the null hypothesis. There is strong statistical evidence that second and third class passengers had different survival outcomes.
+
+This means that third class passengers had significantly lower survival probability than second class passengers, after accounting for passenger type.
+
+# Conclusion
+
+The logistic regression analysis shows that passenger type and passenger class were both strongly associated with survival on the Titanic.
+
+The results support the idea that women and children had higher survival probability than men. However, the results do not support the idea that there was no class discrimination. Passengers in second and third class had lower survival odds than first class passengers, and third class passengers had significantly worse survival outcomes than second class passengers.
