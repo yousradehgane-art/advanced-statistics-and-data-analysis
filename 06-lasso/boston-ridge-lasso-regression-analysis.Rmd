@@ -1,0 +1,309 @@
+---
+title: "High-Dimensional Regression: Ridge and Lasso on Boston Housing Data"
+author: "Advanced Statistics and Data Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+This homework uses the `Boston` dataset from the `MASS` package to predict median housing value (`medv`) using the other available variables as predictors.
+
+The goal is to compare two regularized regression methods:
+
+- Ridge regression
+- Lasso regression
+
+Both methods are useful in high-dimensional or multivariable regression settings because they shrink coefficient estimates and can improve prediction performance on unseen data.
+
+# Load packages and data
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(MASS)
+library(glmnet)
+```
+
+```{r}
+data("Boston")
+help("Boston")
+glimpse(Boston)
+```
+
+# Data preparation
+
+The variables `chas` and `rad` are categorical variables, so we convert them to factors.
+
+```{r}
+Boston$chas <- as.factor(Boston$chas)
+levels(Boston$chas)
+```
+
+```{r}
+Boston$rad <- as.factor(Boston$rad)
+levels(Boston$rad)
+```
+
+We scale the quantitative predictors, excluding the response variable `medv` and the categorical variables `chas` and `rad`.
+
+```{r}
+quali_variables <- which(colnames(Boston) %in% c("chas", "rad", "medv"))
+
+Boston[, -quali_variables] <- scale(Boston[, -quali_variables])
+```
+
+# Train-test split
+
+We split the data into a training set and a test set. The training set contains 80% of the observations.
+
+```{r}
+n.house <- nrow(Boston)
+size <- round(0.8 * n.house)
+
+set.seed(123)
+ind <- sample(n.house, size = size)
+
+train_data <- Boston[ind, ]
+test_data <- Boston[-ind, ]
+
+dim(train_data)
+summary(train_data)
+
+dim(test_data)
+summary(test_data)
+```
+
+# Model matrix
+
+The `glmnet` package requires a matrix of predictors and a response vector.
+
+```{r}
+X <- model.matrix(medv ~ ., train_data)[, -1]
+y <- train_data$medv
+```
+
+# Ridge regression
+
+Ridge regression uses an \(L_2\) penalty. It shrinks coefficients toward zero, but it does not usually set coefficients exactly equal to zero.
+
+```{r}
+fit_ridge <- glmnet(X, y, alpha = 0)
+```
+
+# Ridge coefficient paths
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(
+  fit_ridge,
+  xvar = "norm",
+  sign.lambda = 1,
+  label = TRUE
+)
+
+plot(
+  fit_ridge,
+  xvar = "lambda",
+  sign.lambda = 1,
+  xlab = expression(log(lambda))
+)
+```
+
+As expected, as lambda increases, the coefficients are shrunk toward zero. Since ridge regression uses the \(L_2\) norm, the shrinkage is smooth and coefficients are generally not set exactly equal to zero.
+
+# Cross-validation for ridge regression
+
+We use 10-fold cross-validation to select a good value of lambda.
+
+```{r}
+set.seed(123)
+
+fit_ridge_cv <- cv.glmnet(
+  X,
+  y,
+  alpha = 0,
+  nfolds = 10
+)
+
+par(mfrow = c(1, 1))
+
+plot(
+  fit_ridge_cv,
+  sign.lambda = 1,
+  xlab = expression(log(lambda))
+)
+
+ind_opt <- which(fit_ridge_cv$lambda == fit_ridge_cv$lambda.min)
+
+abline(
+  h = fit_ridge_cv$cvup[ind_opt],
+  col = "blue"
+)
+```
+
+# Ridge lambda values
+
+```{r}
+# Minimum lambda
+fit_ridge_cv$lambda.min
+
+# 1-SE lambda
+fit_ridge_cv$lambda.1se
+```
+
+# Ridge coefficients
+
+Estimated coefficients using the minimum lambda:
+
+```{r}
+coef(fit_ridge_cv, s = "lambda.min")
+```
+
+Estimated coefficients using the 1-SE rule lambda:
+
+```{r}
+coef(fit_ridge_cv, s = "lambda.1se")
+```
+
+In this case, the mean squared error increases as we move toward larger values of lambda. This suggests that a model with a small lambda has the best prediction performance.
+
+However, ridge regression keeps all variables in the model, which may make interpretation more difficult.
+
+# Lasso regression
+
+Lasso regression uses an \(L_1\) penalty. Unlike ridge regression, lasso can shrink some coefficients exactly to zero, which gives it a variable selection effect.
+
+```{r}
+fit_lasso <- glmnet(X, y, alpha = 1)
+```
+
+# Lasso coefficient paths
+
+```{r}
+par(mfrow = c(1, 2))
+
+plot(
+  fit_lasso,
+  xvar = "norm",
+  sign.lambda = 1,
+  label = TRUE
+)
+
+plot(
+  fit_lasso,
+  xvar = "lambda",
+  sign.lambda = 1,
+  xlab = expression(log(lambda))
+)
+```
+
+Unlike ridge regression, the lasso coefficient paths are less smooth and some coefficients become exactly zero when lambda is large enough. This is the variable selection effect of lasso.
+
+# Cross-validation for lasso regression
+
+We use 10-fold cross-validation to select lambda for the lasso model.
+
+```{r}
+set.seed(123)
+
+fit_lasso_cv <- cv.glmnet(
+  X,
+  y,
+  alpha = 1,
+  nfolds = 10
+)
+
+par(mfrow = c(1, 1))
+
+plot(
+  fit_lasso_cv,
+  sign.lambda = 1,
+  xlab = expression(log(lambda))
+)
+```
+
+# Lasso lambda values
+
+```{r}
+# Minimum lambda
+fit_lasso_cv$lambda.min
+
+# 1-SE lambda
+fit_lasso_cv$lambda.1se
+```
+
+# Lasso coefficients
+
+Estimated coefficients using the minimum lambda:
+
+```{r}
+coef(fit_lasso_cv, s = "lambda.min")
+```
+
+Estimated coefficients using the 1-SE rule lambda:
+
+```{r}
+coef(fit_lasso_cv, s = "lambda.1se")
+```
+
+For the lasso, the model selected using the 1-SE rule is usually more interpretable because it is sparser. Some variables are removed from the model because their coefficients are shrunk exactly to zero.
+
+# Test set evaluation
+
+We now evaluate prediction performance on the test set.
+
+```{r}
+X_test <- model.matrix(medv ~ ., test_data)[, -1]
+y_test <- test_data$medv
+```
+
+# Ridge test MSE using 1-SE lambda
+
+```{r}
+yhat_ridge_1se <- predict(
+  fit_ridge_cv,
+  X_test,
+  s = "lambda.1se"
+)
+
+mean((y_test - yhat_ridge_1se)^2)
+```
+
+# Lasso test MSE using 1-SE lambda
+
+```{r}
+yhat_lasso_1se <- predict(
+  fit_lasso_cv,
+  X_test,
+  s = "lambda.1se"
+)
+
+mean((y_test - yhat_lasso_1se)^2)
+```
+
+The test mean squared error is slightly lower for ridge regression than for lasso regression. This suggests that ridge has slightly better prediction performance on the test data in this analysis.
+
+However, lasso produces a more interpretable model because it performs variable selection and sets some coefficients exactly equal to zero.
+
+# Conclusion
+
+Ridge and lasso both use regularization to control model complexity.
+
+Ridge regression gives smooth coefficient shrinkage and tends to keep all predictors in the model. In this analysis, ridge gives slightly better test prediction performance.
+
+Lasso regression can set some coefficients exactly to zero, making the model easier to interpret. The 1-SE lasso model is especially useful when we want a simpler and more interpretable model.
+
+Overall, ridge performs slightly better in terms of test MSE, while lasso is more useful for variable selection.
