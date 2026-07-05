@@ -1,0 +1,315 @@
+---
+title: "Healthcare Coverage and Spending Across U.S. States"
+author: "Yousra"
+date: "19/03/2025`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 7
+)
+```
+
+# Introduction
+
+Health policy in the United States includes several forms of healthcare coverage, including public programs and private insurance. This analysis explores healthcare coverage and healthcare spending across U.S. states in 2013 and 2014.
+
+The main research questions are:
+
+1. Is there a relationship between healthcare coverage and healthcare spending in the United States?
+2. How does the spending distribution change across geographic regions in the United States?
+3. Does the relationship between healthcare coverage and healthcare spending change from 2013 to 2014?
+
+# Load packages
+
+```{r packages}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(datasets)
+library(ggrepel)
+```
+
+# 1. Read the data
+
+The first two lines of the CSV files are descriptive, so they are skipped. Rows after `Notes` are not useful and are removed during import.
+
+```{r read-data}
+coverage_temp <- read_csv("healthcare-coverage.csv", skip = 2, col_names = TRUE)
+coverage <- read_csv(
+  "healthcare-coverage.csv",
+  skip = 2,
+  col_names = TRUE,
+  n_max = which(coverage_temp$Location == "Notes") - 1
+)
+
+spending_temp <- read_csv("healthcare-spending.csv", skip = 2, col_names = TRUE)
+spending <- read_csv(
+  "healthcare-spending.csv",
+  skip = 2,
+  col_names = TRUE,
+  n_max = which(spending_temp$Location == "Notes") - 1
+)
+```
+
+```{r inspect-columns}
+colnames(coverage)
+colnames(spending)
+```
+
+The analysis focuses on 2013 and 2014.
+
+```{r select-years}
+coverage <- coverage |>
+  select(Location, contains("2013"), contains("2014"))
+
+spending <- spending |>
+  select(Location, `2013__Total Health Spending`, `2014__Total Health Spending`)
+
+head(coverage)
+head(spending)
+```
+
+# 2. Clean and reshape the coverage data
+
+The variables `2013__Other Public` and `2014__Other Public` are stored as character variables because they contain `N/A` values. They are converted to numeric.
+
+```{r convert-other-public}
+coverage$`2013__Other Public` <- as.numeric(coverage$`2013__Other Public`)
+coverage$`2014__Other Public` <- as.numeric(coverage$`2014__Other Public`)
+```
+
+The coverage data are reshaped from wide format to long format. The original column names contain both the year and the type of coverage, so they are separated into two variables: `year` and `type`.
+
+```{r tidy-coverage}
+coverage <- coverage |>
+  pivot_longer(
+    cols = -Location,
+    names_to = "year_type",
+    values_to = "tot_coverage"
+  ) |>
+  separate(
+    year_type,
+    sep = "__",
+    into = c("year", "type"),
+    convert = TRUE
+  )
+
+head(coverage)
+table(coverage$type)
+```
+
+The `Total` category is not a real healthcare coverage type. It represents the total population of each state. We keep it as a separate variable called `tot_pop`, then remove `Total` from the coverage-type variable.
+
+```{r extract-population}
+pop <- coverage |>
+  filter(type == "Total") |>
+  select(Location, year, tot_coverage)
+
+coverage <- coverage |>
+  filter(type != "Total") |>
+  left_join(pop, by = c("Location", "year")) |>
+  rename(
+    tot_coverage = tot_coverage.x,
+    tot_pop = tot_coverage.y
+  )
+
+head(coverage)
+table(coverage$type)
+```
+
+# 3. Clean and reshape the spending data
+
+The spending data are also reshaped into long format so that each row corresponds to one location and one year.
+
+```{r tidy-spending}
+spending <- spending |>
+  pivot_longer(
+    cols = -Location,
+    names_to = "year",
+    values_to = "tot_spending"
+  ) |>
+  separate(
+    year,
+    sep = "__",
+    into = c("year", "name"),
+    convert = TRUE
+  ) |>
+  select(-name)
+
+head(spending)
+```
+
+# 4. Add state information
+
+The `datasets` package contains state names, abbreviations, and regions for the 50 states. District of Columbia is manually added.
+
+```{r state-information}
+data(state)
+
+states <- data.frame(
+  Location = state.name,
+  abb = state.abb,
+  region = state.region,
+  stringsAsFactors = FALSE
+)
+
+dc_data <- data.frame(
+  Location = "District of Columbia",
+  abb = "DC",
+  region = "South",
+  stringsAsFactors = FALSE
+)
+
+states <- rbind(states, dc_data)
+head(states)
+```
+
+Add state abbreviations and regions to the coverage dataset.
+
+```{r join-states}
+coverage <- inner_join(coverage, states, by = "Location")
+head(coverage)
+```
+
+# 5. Join coverage and spending data
+
+The coverage and spending datasets are joined by both `Location` and `year`.
+
+```{r join-data}
+data_all <- inner_join(coverage, spending, by = c("Location", "year"))
+str(data_all)
+```
+
+# 6. Create analysis variables
+
+Coverage is converted to a proportion of the state population. Spending is reported in millions, so total spending is multiplied by `1e6` before dividing by the state population.
+
+```{r create-variables}
+data_all <- data_all |>
+  mutate(
+    spending_capita = (tot_spending * 1e6) / tot_pop,
+    prop_coverage = tot_coverage / tot_pop
+  )
+
+head(data_all)
+```
+
+# 7. Coverage proportion vs. healthcare spending in 2013
+
+```{r plot-2013, fig.cap="Proportion of Coverage vs. Per Capita Health Spending - 2013"}
+data_all |>
+  filter(year == 2013) |>
+  ggplot(aes(
+    x = spending_capita,
+    y = prop_coverage,
+    color = region,
+    label = abb
+  )) +
+  geom_point(size = 1, alpha = 0.7) +
+  geom_text_repel(size = 3) +
+  facet_wrap(~ type, scales = "free") +
+  labs(
+    y = "Coverage Proportion",
+    x = "Spending per capita ($)",
+    color = "Region"
+  ) +
+  theme_minimal()
+```
+
+# 8. Coverage proportion vs. healthcare spending in 2014
+
+```{r plot-2014, fig.cap="Proportion of Coverage vs. Per Capita Health Spending - 2014"}
+data_all |>
+  filter(year == 2014) |>
+  ggplot(aes(
+    x = spending_capita,
+    y = prop_coverage,
+    color = region,
+    label = abb
+  )) +
+  geom_point(size = 1, alpha = 0.7) +
+  geom_text_repel(size = 3) +
+  facet_wrap(~ type, scales = "free") +
+  labs(
+    y = "Coverage Proportion",
+    x = "Spending per capita ($)",
+    color = "Region"
+  ) +
+  theme_minimal()
+```
+
+# 9. Spending distribution by region
+
+```{r boxplot-region, fig.cap="Per Capita Health Spending by Region"}
+data_all |>
+  ggplot(aes(
+    x = region,
+    y = spending_capita,
+    fill = region
+  )) +
+  geom_boxplot(alpha = 0.7) +
+  labs(
+    x = "Region",
+    y = "Spending per capita ($)"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+# 10. Compare the relationship between 2013 and 2014
+
+```{r facet-year-type, fig.cap="Proportion of Coverage vs. Per Capita Health Spending by Year and Coverage Type"}
+data_all |>
+  ggplot(aes(
+    x = spending_capita,
+    y = prop_coverage,
+    color = region,
+    label = abb
+  )) +
+  geom_point(size = 1, alpha = 0.7) +
+  geom_text_repel(size = 2.5) +
+  facet_wrap(type ~ year, scales = "free") +
+  labs(
+    y = "Coverage Proportion by State",
+    x = "Per Capita Health Spending ($)",
+    color = "Region"
+  ) +
+  theme_minimal()
+```
+
+# Responses to the research questions
+
+## 1. Is there a relationship between healthcare coverage and healthcare spending?
+
+The scatterplots suggest that the relationship depends on the type of healthcare coverage. For employer-based coverage, there appears to be a positive relationship: states with higher per capita healthcare spending tend to have higher employer coverage proportions.
+
+For the uninsured category, the relationship appears negative: states with higher per capita healthcare spending tend to have lower proportions of uninsured individuals.
+
+For the other coverage types, such as Medicaid, Medicare, Non-Group, and Other Public, there is no clear consistent relationship between coverage proportion and per capita healthcare spending.
+
+## 2. How does spending distribution change across geographic regions?
+
+The boxplot shows that per capita healthcare spending differs across U.S. regions. The Northeast has the highest median spending. The South and West have lower median spending, while the North Central region is intermediate and shows a relatively compact distribution.
+
+There are also regional outliers. The South includes high-spending states such as District of Columbia, Delaware, and West Virginia, while Alaska appears as a high-spending outlier in the West.
+
+## 3. Does the relationship change from 2013 to 2014?
+
+The faceted comparison by year and coverage type shows that the overall relationship between healthcare coverage proportion and per capita healthcare spending is very similar in 2013 and 2014.
+
+Although some state-level differences are visible, there is no strong evidence of a major shift in the relationship between these two years.
+
+# Conclusion
+
+This exploratory analysis suggests that higher per capita healthcare spending is associated with higher employer-based coverage and lower uninsured proportions across U.S. states. However, for other coverage categories, the relationship with spending is less clear. Regional differences in spending are also visible, with the Northeast showing the highest median spending and the South and West showing lower median spending overall.
