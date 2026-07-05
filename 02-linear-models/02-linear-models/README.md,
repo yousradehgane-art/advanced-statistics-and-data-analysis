@@ -1,0 +1,47 @@
+# Linear Models: Spider Friction Analysis
+
+This folder contains a linear models homework from the Advanced Statistics and Data Analysis course. The analysis is based on spider leg friction data from Wolff and Gorb (2013), focusing on the comparison between pulling and pushing motions across different leg pairs.
+
+## Research Questions
+
+1. How does friction differ between pulling and pushing motions?
+2. Does the effect of force type on friction change after accounting for leg pair?
+3. Are there significant differences in friction between specific leg pairs?
+4. Is there an interaction between force type and leg pair?
+5. For leg L2, is the difference between push and pull friction statistically significant?
+
+## Files
+
+- `spider-friction-linear-models-analysis.Rmd`: R Markdown file containing the full analysis
+- `spider_wolff_gorb_2013.csv`: dataset used for the analysis
+
+## Methods Used
+
+- Data import and cleaning
+- Factor conversion
+- Exploratory visualization with boxplots
+- Simple linear regression
+- Multiple linear regression
+- Linear models with interaction terms
+- ANOVA model comparison
+- Contrast analysis
+
+## Tools Used
+
+- R
+- tidyverse
+- ggplot2
+- readr
+- dplyr
+- contrast
+
+## Summary
+
+The analysis shows that pulling generally produces higher friction than pushing across spider legs. 
+The first linear model shows a strong negative effect of the push condition on friction. After adding leg as a covariate, 
+the force-type effect remains significant, while leg also explains additional variation in friction. 
+The interaction model suggests that the effect of force type is not constant across all legs, with larger
+pull-push differences for some leg pairs.
+
+
+
