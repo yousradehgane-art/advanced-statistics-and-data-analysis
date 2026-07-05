@@ -1,0 +1,197 @@
+---
+title: "Spider Friction Linear Models Analysis"
+author: "Yousra"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+# Introduction
+
+Wolff and Gorb (2013) studied frictional coefficients on different spider legs. The goal of this analysis is to compare pulling and pushing motions across different leg pairs using linear models.
+
+The analysis focuses on:
+
+- Visual comparison of friction values by leg and force type
+- Linear modeling of friction using force type
+- Linear modeling of friction using force type and leg
+- Contrasts between selected leg pairs
+- Interaction between force type and leg
+- Contrasts between push and pull for leg L2
+
+# Load packages and data
+
+```{r load-packages}
+rm(list = ls())
+
+library(tidyverse)
+library(readr)
+library(ggplot2)
+library(contrast)
+```
+
+```{r read-data}
+spider <- read_csv("spider_wolff_gorb_2013.csv", skip = 1)
+```
+
+```{r inspect-data}
+glimpse(spider)
+```
+
+```{r convert-factors}
+spider <- spider |>
+  mutate(
+    leg = factor(leg),
+    type = factor(type)
+  )
+```
+
+# Visual inspection
+
+The first step is to visually compare the friction distribution for pull and push forces across the four legs.
+
+```{r boxplot-friction, fig.width=8, fig.height=5}
+spider |>
+  ggplot(aes(x = leg, y = friction, fill = type)) +
+  geom_boxplot() +
+  labs(
+    title = "Friction Distribution by Force Type and Leg",
+    x = "Leg",
+    y = "Friction",
+    fill = "Force Type"
+  ) +
+  theme_minimal()
+```
+
+The boxplot shows that the pull force generally gives higher friction values than the push force across all legs. This suggests that pulling generates more resistance than pushing.
+
+The pattern is not identical for every leg. Legs L1, L2, and L3 show relatively clear differences between pull and push, while L4 shows more variability, especially under the push condition.
+
+# Linear model with force type
+
+We first fit a linear model with `friction` as the response variable and `type` as the only covariate.
+
+```{r model-type}
+lm_type <- lm(friction ~ type, data = spider)
+summary(lm_type)
+```
+
+The fitted model is:
+
+\[
+\widehat{friction} = 1.21 - 0.78 \cdot type_{push}
+\]
+
+The intercept represents the estimated friction for the reference category, which is the pull force. The coefficient for `typepush` is approximately -0.78, meaning that push force has, on average, friction values about 0.78 units lower than pull force.
+
+The p-value for `typepush` is very small, indicating that the difference between pull and push is highly statistically significant.
+
+# Linear model with force type and leg
+
+Next, we include both force type and leg as covariates.
+
+```{r model-type-leg}
+lm_type_leg <- lm(friction ~ type + leg, data = spider)
+summary(lm_type_leg)
+```
+
+The fitted model is:
+
+\[
+\widehat{friction} = 1.05 - 0.78 \cdot type_{push} + 0.17 \cdot leg_{L2} + 0.16 \cdot leg_{L3} + 0.28 \cdot leg_{L4}
+\]
+
+The coefficient for `typepush` remains approximately -0.78 after including leg in the model. This means that the estimated effect of force type does not change after adjusting for leg.
+
+The reference leg is L1. Compared with L1, friction is higher for:
+
+- L2 by approximately 0.17 units
+- L3 by approximately 0.16 units
+- L4 by approximately 0.28 units
+
+All three leg effects are statistically significant.
+
+```{r contingency-table}
+table(spider$leg, spider$type)
+```
+
+The design is balanced because each leg has the same number of pull and push observations. This explains why the coefficient for `typepush` remains unchanged after adding leg to the model.
+
+```{r compare-type-vs-type-leg}
+anova(lm_type, lm_type_leg)
+```
+
+The ANOVA comparison shows that adding leg significantly improves the model. The adjusted R-squared also increases, meaning that leg explains additional variability in friction.
+
+# Contrast between L3 and L2
+
+We now test whether the estimated friction differs between leg L3 and leg L2. Because the design is balanced, the same conclusion would be obtained using either the push or pull condition.
+
+```{r contrast-l3-l2}
+contrast::contrast(
+  lm_type_leg,
+  list(type = "push", leg = "L3"),
+  list(type = "push", leg = "L2")
+)
+```
+
+The contrast between L3 and L2 is small and not statistically significant. Therefore, we do not have evidence that friction differs significantly between these two legs.
+
+# Linear model with interaction
+
+We now fit a model that includes the interaction between force type and leg.
+
+```{r interaction-model}
+lm_type_leg_interaction <- lm(friction ~ type * leg, data = spider)
+summary(lm_type_leg_interaction)
+```
+
+The fitted model is:
+
+\[
+\widehat{friction} = 0.92 - 0.51 \cdot type_{push} + 0.22 \cdot leg_{L2} + 0.35 \cdot leg_{L3} + 0.48 \cdot leg_{L4}
+- 0.10 \cdot type_{push}:leg_{L2} - 0.38 \cdot type_{push}:leg_{L3} - 0.40 \cdot type_{push}:leg_{L4}
+\]
+
+This model allows the effect of force type to differ across legs.
+
+The intercept corresponds to the estimated friction for pull force on leg L1. The coefficient for `typepush` represents the effect of push compared with pull for L1 only.
+
+The leg coefficients represent the difference between each leg and L1 under the pull condition. The interaction terms show how the push effect changes for each leg compared with L1.
+
+The interaction terms for L3 and L4 are statistically significant and negative. This means that the reduction in friction from pull to push is larger for L3 and L4 than for L1. The interaction term for L2 is not statistically significant, suggesting that the push-pull difference for L2 is similar to that for L1.
+
+```{r compare-interaction}
+anova(lm_type_leg, lm_type_leg_interaction)
+```
+
+The ANOVA comparison between the additive model and the interaction model is statistically significant. This indicates that the interaction between force type and leg improves the model and that the effect of force type depends on the leg.
+
+# Contrast between push and pull for leg L2
+
+Finally, we compare push and pull force specifically for leg L2 using the interaction model.
+
+```{r contrast-push-pull-l2}
+contrast::contrast(
+  lm_type_leg_interaction,
+  list(type = "push", leg = "L2"),
+  list(type = "pull", leg = "L2")
+)
+```
+
+The contrast shows that, for leg L2, push force produces significantly lower friction than pull force. The estimated difference is approximately -0.62, with a confidence interval that does not include zero.
+
+This result is consistent with the interaction model: the push effect for L2 is obtained by combining the main effect of `typepush` with the interaction term `typepush:legL2`.
+
+# Conclusion
+
+Pulling produces higher friction than pushing across spider legs. The effect of force type is statistically significant. Leg also has a significant effect on friction, with L4 showing the largest increase relative to L1 in the additive model.
+
+The interaction model shows that the difference between pull and push is not constant across legs. In particular, L3 and L4 show a stronger reduction in friction under the push condition compared with L1. For L2, push still produces significantly lower friction than pull.
