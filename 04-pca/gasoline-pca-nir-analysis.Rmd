@@ -1,0 +1,140 @@
+---
+title: "Principal Component Analysis: Gasoline NIR Spectra"
+author: "Advanced Statistics and Data Analysis"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE
+)
+```
+
+# Overview
+
+This homework uses gasoline near-infrared spectroscopy data to predict octane values.
+
+The dataset contains:
+
+- `octane`: measured octane values for 60 samples
+- `NIR`: near-infrared spectra measured at 401 wavelengths, from 900 nm to 1700 nm
+
+Because the number of spectral variables is much larger than the number of observations, we use Principal Component Analysis (PCA) to reduce the dimensionality of the NIR spectra before fitting a linear regression model.
+
+# Load packages and data
+
+```{r}
+library(dplyr)
+library(factoextra)
+```
+
+```{r}
+load("gasoline.rda")
+glimpse(gasoline)
+```
+
+# Can we fit a linear model using all NIR variables?
+
+The NIR spectra contain 401 variables, while the dataset has only 60 observations. A standard linear regression model with all NIR variables would require estimating more parameters than the number of available observations.
+
+In general, the number of observations should be larger than the number of covariates. More importantly, to obtain stable and precise estimates, the number of observations should be much larger than the number of parameters.
+
+Therefore, fitting a linear regression model directly using all NIR variables is not appropriate.
+
+# Principal Component Analysis
+
+We apply PCA to the NIR spectra.
+
+```{r}
+pca_gas <- prcomp(gasoline$NIR, scale = TRUE)
+summary(pca_gas)
+```
+
+# Scree plot
+
+The scree plot shows how much variance is explained by each principal component.
+
+```{r}
+fviz_eig(pca_gas, geom = "bar", bar_width = 0.3) +
+  ggtitle("Explained Variance by Principal Components")
+```
+
+# How many principal components should we keep?
+
+From the PCA summary, the first five principal components explain approximately 98.3% of the total variance:
+
+- PC1 explains about 71.7%
+- PC2 explains about 16.8%
+- PC3 explains about 5.2%
+- PC4 explains about 3.8%
+- PC5 explains about 0.8%
+
+Together, the first five principal components capture most of the information in the NIR spectra. Therefore, we keep the first five principal components.
+
+A smaller number of components could also be considered, but using more than five components is not necessary here because the cumulative explained variance is already very high.
+
+# Extract principal component scores
+
+We extract the principal component scores and store them in the dataset.
+
+```{r}
+gasoline$PC <- predict(pca_gas)
+```
+
+# Linear regression using the first five principal components
+
+We now fit a linear regression model using octane as the response variable and the first five principal components as predictors.
+
+```{r}
+LinearModel.1 <- lm(octane ~ PC[, 1:5], data = gasoline)
+summary(LinearModel.1)
+```
+
+# Interpretation of the linear model
+
+The fitted model uses the first five principal components as covariates instead of the original NIR variables.
+
+The fitted model is approximately:
+
+\[
+\widehat{octane} = 87.18 + 0.03PC_1 + 0.07PC_2 - 0.29PC_3 + 0.04PC_4 - 0.08PC_5
+\]
+
+Each coefficient represents the expected change in octane for a one-unit increase in the corresponding principal component, while holding the other principal components constant.
+
+All five principal components are statistically significant in this model. This means that each selected component contributes information for predicting octane.
+
+The residual standard error is approximately 0.216, meaning that the model predicts octane with an average error of about 0.216 octane units.
+
+The model has a very high \(R^2\), approximately 0.982, and an adjusted \(R^2\) of approximately 0.980. This means that the model explains about 98% of the variability in octane values. The very small p-value indicates that the overall model is highly statistically significant.
+
+Overall, the model gives an excellent fit to the data.
+
+# Why PCA is useful here
+
+PCA is useful because it transforms the original 401 correlated NIR variables into a smaller number of uncorrelated principal components.
+
+This allows us to fit a regression model using only a few predictors while still preserving most of the information contained in the original spectra.
+
+Instead of estimating hundreds of regression coefficients, we estimate a much smaller and more stable model.
+
+# How to predict octane for a new sample
+
+To predict the octane value of a new gasoline sample, we need to follow two steps:
+
+1. Project the new NIR spectrum onto the same principal components using the PCA rotation.
+2. Use the resulting principal component scores as inputs in the fitted linear regression model.
+
+In practice, this means that the new sample must be transformed using the same PCA model fitted on the training data. Then, the first five principal component scores are passed to the linear regression model to obtain the predicted octane value.
+
+# Conclusion
+
+Because the dataset contains many more spectral variables than observations, direct linear regression using all NIR variables is not appropriate. PCA reduces the high-dimensional NIR spectra to a small number of informative components.
+
+Using the first five principal components, the regression model explains about 98% of the variability in octane values and provides an accurate prediction model for gasoline octane.
